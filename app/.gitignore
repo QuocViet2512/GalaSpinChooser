@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+src/data/**
+src/setting/*.json
+src/images/*
+!src/images/.gitkeep
+*.log
+.test-artifacts/
