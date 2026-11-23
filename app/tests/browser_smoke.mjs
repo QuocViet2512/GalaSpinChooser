@@ -138,15 +138,26 @@ try {
   console.log('Bootstrap:', await evaluate(`document.getElementById('environment-status').textContent`));
   await waitFor(() => evaluate(`document.getElementById('spin-status').textContent.includes('ĐẦU TIÊN')`));
   assert.equal(await evaluate(`document.body.classList.contains('stage-waiting') && document.getElementById('stage').inert && getComputedStyle(document.querySelector('.stage-tools')).visibility === 'hidden'`), true);
+  assert.equal(await evaluate(`getComputedStyle(document.getElementById('waiting-fullscreen')).visibility==='visible' && !document.getElementById('waiting-fullscreen').closest('[inert]')`), true);
+  await cdp('Runtime.evaluate', {expression:`document.getElementById('waiting-fullscreen').click()`,userGesture:true});
+  await waitFor(()=>evaluate(`!!document.fullscreenElement && document.getElementById('waiting-fullscreen').getAttribute('aria-pressed')==='true' && document.getElementById('fullscreen').getAttribute('aria-pressed')==='true'`));
+  assert.equal(await evaluate(`document.body.classList.contains('stage-waiting') && document.getElementById('stage').inert`), true);
+  await cdp('Runtime.evaluate', {expression:`document.getElementById('waiting-fullscreen').click()`,userGesture:true});
+  await waitFor(()=>evaluate(`!document.fullscreenElement && document.getElementById('waiting-fullscreen').getAttribute('aria-pressed')==='false'`));
   await key('ArrowRight', 'ArrowRight', 39);
   await pause(650);
   assert.equal(await evaluate(`!document.getElementById('stage').inert && getComputedStyle(document.getElementById('stage')).opacity === '1'`), true);
+  assert.equal(await evaluate(`getComputedStyle(document.getElementById('waiting-fullscreen')).visibility==='hidden'`), true);
   await key('ArrowLeft', 'ArrowLeft', 37);
   await pause(650);
   assert.equal(await evaluate(`getComputedStyle(document.getElementById('stage')).visibility === 'hidden'`), true);
   await key(' ', 'Space', 32);
   await key('ArrowDown', 'ArrowDown', 40);
   await evaluate(`document.getElementById('show-setup').click()`);
+  assert.equal(await evaluate(`document.querySelectorAll('#settings-form details.settings-group').length===5 && Array.from(document.querySelectorAll('#settings-form details.settings-group')).every(el=>!el.open) && document.querySelectorAll('.settings-image-preview').length===5`), true);
+  await evaluate(`document.querySelector('#settings-popup summary').click()`);
+  assert.equal(await evaluate(`document.getElementById('settings-popup').open`), true);
+  await evaluate(`document.querySelector('#settings-popup summary').click()`);
   await key('ArrowUp', 'ArrowUp', 38);
   assert.equal(await evaluate(`!document.body.classList.contains('stage-waiting')`), true);
   assert.equal(await evaluate(`document.getElementById('import-button').disabled`), true);
@@ -175,19 +186,23 @@ try {
   await evaluate(`document.getElementById('show-setup').click(); document.getElementById('setting-manualLayout').checked=true; for (const [key,value] of Object.entries({reelY:55,reelWidth:88,reelHeight:400,reelRadius:32,reelFont:54,buttonY:89,buttonWidth:420,buttonHeight:72,buttonRadius:24})) document.getElementById('setting-'+key).value=value; document.getElementById('setting-buttonTransparent').checked=true;document.getElementById('setting-buttonText').value='QUAY NGAY';document.getElementById('preview-layout').click()`);
   await pause(650);
   assert.equal(await evaluate(`(() => {const box=document.querySelector('.reel-shell').getBoundingClientRect(),button=document.getElementById('spin').getBoundingClientRect();return document.body.classList.contains('manual-layout') && Math.abs(box.width-innerWidth*.88)<2 && Math.abs(box.left+box.width/2-innerWidth*.5)<2 && Math.abs(box.top+box.height/2-innerHeight*.55)<2 && Math.abs(button.left+button.width/2-innerWidth*.5)<2 && Math.abs(button.top+button.height/2-innerHeight*.89)<2 && box.height===400 && button.width===420 && button.height===72 && getComputedStyle(document.querySelector('.reel-shell')).borderRadius==='32px' && getComputedStyle(document.querySelector('.card-name')).fontSize==='39px' && document.getElementById('spin').textContent==='QUAY NGAY' && getComputedStyle(document.querySelector('.mail')).fontSize==='54px';})()`), true);
-  assert.equal(await evaluate(`getComputedStyle(document.getElementById('spin')).backgroundColor==='rgba(0, 0, 0, 0)' && getComputedStyle(document.getElementById('spin')).borderTopWidth==='1px'`), true);
+  assert.equal(await evaluate(`getComputedStyle(document.getElementById('spin')).backgroundColor==='rgba(0, 0, 0, 0)' && getComputedStyle(document.getElementById('spin')).borderTopWidth==='0px'`), true);
   await screenshot('stage-manual-layout.png');
   await evaluate(`document.getElementById('show-setup').click(); document.getElementById('settings-form').requestSubmit()`);
   await waitFor(() => evaluate(`!document.getElementById('save-settings').disabled`));
   await cdp('Page.reload');
   await waitFor(() => evaluate(`document.body.classList.contains('manual-layout') && !document.getElementById('spin').disabled`));
   assert.equal(await evaluate(`!document.getElementById('setting-reelX') && !document.getElementById('setting-buttonX') && !document.getElementById('setting-nameFont') && document.getElementById('setting-buttonTransparent').checked && document.body.classList.contains('transparent-spin') && document.getElementById('setting-reelHeight').value==='400' && document.getElementById('spin').textContent==='QUAY NGAY' && document.getElementById('setting-manualLayout').checked`), true);
+  assert.equal(await evaluate(`document.getElementById('setting-buttonWidth').value==='420' && document.getElementById('setting-buttonHeight').value==='72' && state.batch.settings.buttonWidth===420 && state.batch.settings.buttonHeight===72 && readLayout().buttonWidth===420 && readLayout().buttonHeight===72`), true);
   await key('ArrowDown', 'ArrowDown', 40);
   await pause(650);
   await evaluate(`document.getElementById('show-setup').click(); document.getElementById('reset-layout').click(); document.getElementById('settings-form').requestSubmit()`);
   await waitFor(() => evaluate(`!document.body.classList.contains('manual-layout') && !document.getElementById('save-settings').disabled`));
   await evaluate(`document.querySelector('#setup-dialog .close').click(); document.activeElement.blur()`);
   assert.equal(await evaluate(`!document.getElementById('setting-buttonTransparent').checked && !document.body.classList.contains('transparent-spin') && getComputedStyle(document.getElementById('spin')).backgroundColor !== 'rgba(0, 0, 0, 0)'`), true);
+  assert.equal(await evaluate(`state.batch.settings.buttonWidth===310 && state.batch.settings.buttonHeight===58`), true);
+  assert.equal(await evaluate(`getComputedStyle(document.getElementById('spin')).borderTopWidth==='0px' && getComputedStyle(document.querySelector('.reel-shell')).borderTopWidth==='1px'`), true);
+  console.log('PASS: Button width/height editable, previewed and persisted after reload; reset restores defaults');
   console.log('PASS: Manual reel/button placement, transparent button preview, persistence and reset');
   await evaluate(`document.getElementById('show-setup').click();document.getElementById('setting-fitBackground').checked=true;document.getElementById('preview-layout').click()`);
   await pause(650);
@@ -223,6 +238,169 @@ try {
   await waitFor(() => evaluate(`!document.body.classList.contains('fit-background') && !document.getElementById('save-settings').disabled`));
   await evaluate(`document.querySelector('#setup-dialog .close').click();document.activeElement.blur()`);
   console.log('PASS: Image-relative stage preview, desktop/mobile geometry, reload and reset');
+  await evaluate(`(async () => {
+    document.getElementById('show-setup').click();
+    const canvas=document.createElement('canvas');canvas.width=620;canvas.height=116;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#1558aa';ctx.fillRect(0,0,620,116);
+    ctx.fillStyle='#ffffff';ctx.font='bold 36px Arial';ctx.textAlign='center';ctx.fillText('QUAY NGAY',310,72);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve));const transfer=new DataTransfer();
+    transfer.items.add(new File([blob],'button.png',{type:'image/png'}));document.getElementById('button-background-file').files=transfer.files;
+    document.getElementById('setting-buttonTransparent').checked=true;
+    document.getElementById('setting-buttonText').value='';
+    document.getElementById('setting-fitBackground').checked=true;
+    document.getElementById('preview-layout').click();
+  })()`);
+  await pause(650);
+  assert.equal(await evaluate(`(() => {const button=document.getElementById('spin'),css=getComputedStyle(button);return css.backgroundImage.includes('blob:') && css.borderTopWidth==='0px' && css.backgroundSize==='100% 100%' && css.backgroundRepeat==='no-repeat' && css.backgroundColor==='rgba(0, 0, 0, 0)' && button.textContent==='' && !!button.getAttribute('aria-label') && !state.batch.settings.buttonBackground;})()`), true);
+  const assertArtworkResizes = async (selector, dimensions) => {
+    const original = await evaluate(`readLayout()`);
+    for (const size of dimensions) {
+      await evaluate(`applyLayout({...readLayout(),...${JSON.stringify(size)}})`);
+      await pause(150);
+      assert.equal(await evaluate(`(() => {
+        const element=document.querySelector(${JSON.stringify(selector)}), css=getComputedStyle(element), box=element.getBoundingClientRect();
+        const fitted=document.body.classList.contains('fit-background'),scale=fitted ? Math.min(innerWidth/1920,innerHeight/stageDesignHeight) : 1;
+        const expected=${JSON.stringify(size)};
+        const width=expected.buttonWidth ?? (fitted ? 1920 : innerWidth)*expected.reelWidth/100;
+        const height=expected.buttonHeight ?? expected.reelHeight;
+        return css.backgroundImage.includes('blob:') && css.backgroundSize==='100% 100%' && css.backgroundRepeat==='no-repeat' &&
+          Math.abs(box.width-width*scale)<2 && Math.abs(box.height-height*scale)<2;
+      })()`), true);
+    }
+    await evaluate(`applyLayout(${JSON.stringify(original)})`);
+  };
+  await assertArtworkResizes('#spin', [{buttonWidth:520,buttonHeight:120},{buttonWidth:180,buttonHeight:90}]);
+  await screenshot('stage-button-background.png');
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('settings-form').requestSubmit()`);
+  await waitFor(() => evaluate(`!document.getElementById('save-settings').disabled && !!state.batch.settings.buttonBackground`));
+  const buttonBackground = await evaluate(`state.batch.settings.buttonBackground`);
+  await cdp('Page.reload');
+  await waitFor(() => evaluate(`!document.getElementById('spin').disabled && document.getElementById('spin').style.backgroundImage.includes('blob:')`));
+  assert.equal(await evaluate(`state.batch.settings.buttonBackground`), buttonBackground);
+  await key('ArrowDown', 'ArrowDown', 40);
+  await pause(650);
+  await assertFittedStage();
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('remove-button-background').click();document.getElementById('preview-layout').click()`);
+  assert.equal(await evaluate(`getComputedStyle(document.getElementById('spin')).backgroundImage`), 'none');
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('reset-layout').click();document.getElementById('settings-form').requestSubmit()`);
+  await waitFor(() => evaluate(`!document.getElementById('save-settings').disabled && state.batch.settings.buttonBackground==='' && !document.body.classList.contains('fit-background')`));
+  await evaluate(`document.querySelector('#setup-dialog .close').click();document.activeElement.blur()`);
+  console.log('PASS: Offline button artwork preview, transparent/blank label, fitted layout, save/reload and removal');
+  const chooseReelImage = async color => evaluate(`(async () => {
+    document.getElementById('show-setup').click();
+    const canvas=document.createElement('canvas');canvas.width=1728;canvas.height=360;
+    const ctx=canvas.getContext('2d');ctx.fillStyle=${JSON.stringify(color)};ctx.fillRect(0,0,1728,360);
+    ctx.strokeStyle='#ffcc55';ctx.lineWidth=12;ctx.strokeRect(12,12,1704,336);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve)),transfer=new DataTransfer();
+    transfer.items.add(new File([blob],'reel.png',{type:'image/png'}));document.getElementById('reel-background-file').files=transfer.files;
+    document.getElementById('setting-fitBackground').checked=true;
+    document.getElementById('preview-layout').click();
+  })()`);
+  await chooseReelImage('#163c68');
+  await pause(650);
+  assert.equal(await evaluate(`(() => {const css=getComputedStyle(document.querySelector('.reel-shell'));return document.querySelector('#stage > div > section.machine > div.reel-shell')===document.querySelector('.reel-shell') && css.borderTopWidth==='1px' && css.backgroundOrigin==='border-box' && css.backgroundClip==='border-box' && css.backgroundImage.includes('blob:') && css.backgroundSize==='100% 100%' && css.backgroundRepeat==='no-repeat' && !state.batch.settings.reelBackground && getComputedStyle(document.querySelector('.reel-window')).zIndex==='1' && document.querySelector('.mail').textContent.includes('@');})()`), true);
+  await assertFittedStage();
+  await assertArtworkResizes('#stage > div > section.machine > div.reel-shell', [{reelWidth:70,reelHeight:240},{reelWidth:95,reelHeight:480}]);
+  await screenshot('stage-reel-background.png');
+  await cdp('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:false});
+  await pause(150);
+  await assertFittedStage();
+  await screenshot('stage-reel-background-mobile.png');
+  await cdp('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  const saveReelSettings = async () => {
+    await evaluate(`document.getElementById('show-setup').click();document.getElementById('settings-form').requestSubmit()`);
+    await waitFor(() => evaluate(`!document.getElementById('save-settings').disabled && !!state.batch.settings.reelBackground`));
+    await evaluate(`document.querySelector('#setup-dialog .close').click();document.activeElement.blur()`);
+  };
+  await saveReelSettings();
+  const firstReelBackground = await evaluate(`state.batch.settings.reelBackground`);
+  await chooseReelImage('#25482b');
+  await saveReelSettings();
+  const reelBackground = await evaluate(`state.batch.settings.reelBackground`);
+  assert.notEqual(reelBackground, firstReelBackground);
+  await cdp('Page.reload');
+  await waitFor(() => evaluate(`!document.getElementById('spin').disabled && document.querySelector('.reel-shell').style.backgroundImage.includes('blob:')`));
+  assert.equal(await evaluate(`state.batch.settings.reelBackground`), reelBackground);
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.reel-shell')).borderTopWidth`), '1px');
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('setting-reelBorder').checked=false;document.getElementById('preview-layout').click()`);
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.reel-shell')).borderTopWidth`), '0px');
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('setting-reelBorder').checked=true;document.getElementById('preview-layout').click()`);
+  await key('ArrowDown', 'ArrowDown', 40);
+  await pause(650);
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('remove-reel-background').click();document.getElementById('preview-layout').click()`);
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.reel-shell')).backgroundImage`), 'none');
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.reel-shell')).borderTopWidth`), '1px');
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('settings-form').requestSubmit()`);
+  await waitFor(() => evaluate(`!document.getElementById('save-settings').disabled && state.batch.settings.reelBackground===''`));
+  await evaluate(`document.querySelector('#setup-dialog .close').click();document.activeElement.blur()`);
+  await chooseReelImage('#163c68');
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('reset-layout').click();document.getElementById('settings-form').requestSubmit()`);
+  await waitFor(() => evaluate(`!document.getElementById('save-settings').disabled && !document.body.classList.contains('fit-background')`));
+  assert.equal(await evaluate(`state.batch.settings.reelBackground==='' && document.getElementById('reel-background-file').files.length===0 && getComputedStyle(document.querySelector('.reel-shell')).backgroundImage==='none'`), true);
+  await evaluate(`document.querySelector('#setup-dialog .close').click();document.activeElement.blur()`);
+  console.log('PASS: Reel artwork desktop/mobile preview, replacement, offline save/reload, removal and reset');
+
+  const winnerCountBeforePreview = await evaluate(`state.batch.won`);
+  await evaluate(`(async () => {
+    document.getElementById('show-setup').click();
+    const canvas=document.createElement('canvas');canvas.width=780;canvas.height=400;
+    const ctx=canvas.getContext('2d');ctx.fillStyle='#214633';ctx.fillRect(0,0,780,400);
+    ctx.strokeStyle='#ffcc55';ctx.lineWidth=12;ctx.strokeRect(12,12,756,376);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve)),transfer=new DataTransfer();
+    transfer.items.add(new File([blob],'winner.png',{type:'image/png'}));document.getElementById('winner-background-file').files=transfer.files;
+    document.getElementById('winner-background-file').dispatchEvent(new Event('change',{bubbles:true}));
+    for (const [key,value] of Object.entries({winnerWidth:1000,winnerHeight:600,winnerContentY:70})) document.getElementById('setting-'+key).value=value;
+    document.getElementById('setting-winnerTransparent').checked=true;
+    document.getElementById('setting-winnerTextColor').value='#12ab34';
+    document.getElementById('setting-reelTextColor').value='#ab1234';
+    document.getElementById('preview-winner-background').click();
+  })()`);
+  assert.equal(await evaluate(`(() => {const dialog=document.getElementById('winner-dialog'),css=getComputedStyle(dialog);return dialog.open && document.activeElement===dialog && !dialog.querySelector('button') && !document.getElementById('confirm-winner') && !document.getElementById('absent-winner') && !dialog.querySelector('kbd') && !document.getElementById('winner-keyboard-hint') && !dialog.textContent.includes('Tiếp tục') && !dialog.textContent.includes('Vắng mặt') && css.backgroundImage.includes('blob:') && css.backgroundSize==='100% 100%' && css.borderTopWidth==='0px' && document.getElementById('winner-sound').paused && !state.batch.settings.winnerBackground;})()`), true);
+  await waitFor(()=>evaluate(`!document.getElementById('winner-background-thumbnail').hidden && document.getElementById('winner-background-thumbnail').naturalWidth===780`));
+  const assertPopupLayout = async () => {
+    assert.equal(await evaluate(`(() => {
+      const popup=document.getElementById('winner-dialog'),box=popup.getBoundingClientRect(),content=popup.querySelector('.winner-inner').getBoundingClientRect(),css=getComputedStyle(popup);
+      return Math.abs(box.width-Math.min(1000,innerWidth*.94))<2 && Math.abs(box.height-Math.min(600,innerHeight*.92))<2 &&
+        Math.abs(content.left-box.left-(box.width-content.width)*.5)<2 && Math.abs(content.top-box.top-(box.height-content.height)*.7)<2 &&
+        css.backgroundColor==='rgba(0, 0, 0, 0)' && css.boxShadow==='none' && css.borderTopWidth==='0px' && css.borderRadius==='0px' && Math.abs(document.getElementById('winner-department').getBoundingClientRect().top-document.getElementById('winner-email').getBoundingClientRect().bottom-8)<1 && getComputedStyle(document.getElementById('winner-department')).fontSize===getComputedStyle(document.getElementById('winner-email')).fontSize && Number(getComputedStyle(document.getElementById('winner-department')).fontWeight)>=700 && ['winner-name','winner-email','winner-department'].every(id=>getComputedStyle(document.getElementById(id)).color==='rgb(18, 171, 52)');
+    })()`), true);
+  };
+  await assertPopupLayout();
+  await cdp('Emulation.setDeviceMetricsOverride', {width:390,height:844,deviceScaleFactor:1,mobile:false});
+  await pause(150);
+  await assertPopupLayout();
+  await screenshot('winner-layout-transparent-mobile.png');
+  await cdp('Emulation.setDeviceMetricsOverride', {width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  await pause(150);
+  await screenshot('winner-background-preview.png');
+  await key('v', 'KeyV', 86);
+  await waitFor(() => evaluate(`document.getElementById('setup-dialog').open && !document.getElementById('winner-dialog').open`));
+  assert.equal(await evaluate(`state.batch.won`), winnerCountBeforePreview);
+  await evaluate(`document.getElementById('settings-form').requestSubmit()`);
+  await waitFor(() => evaluate(`!document.getElementById('save-settings').disabled && !!state.batch.settings.winnerBackground`));
+  const winnerBackground = await evaluate(`state.batch.settings.winnerBackground`);
+  await waitFor(()=>evaluate(`document.getElementById('winner-background-thumbnail').naturalWidth===780 && !document.getElementById('winner-background-thumbnail').hidden`));
+  assert.equal(await evaluate(`Array.from(document.querySelectorAll('#stage .email-card .mail,#stage .email-card .card-name')).every(el=>getComputedStyle(el).color==='rgb(171, 18, 52)')`), true);
+  await cdp('Page.reload');
+  await waitFor(() => evaluate(`!document.getElementById('spin').disabled && !!state.batch.settings.winnerBackground`));
+  assert.equal(await evaluate(`state.batch.settings.winnerBackground`), winnerBackground);
+  assert.equal(await evaluate(`state.batch.settings.reelTextColor==='#ab1234' && document.getElementById('setting-reelTextColor').value==='#ab1234' && state.batch.settings.winnerTextColor==='#12ab34' && document.getElementById('setting-winnerTextColor').value==='#12ab34' && state.batch.settings.winnerWidth===1000 && state.batch.settings.winnerHeight===600 && state.batch.settings.winnerContentY===70 && document.getElementById('setting-winnerTransparent').checked`), true);
+  await key('ArrowDown', 'ArrowDown', 40);
+  await pause(650);
+  await evaluate(`document.getElementById('show-setup').click();document.getElementById('preview-winner-background').click()`);
+  assert.equal(await evaluate(`getComputedStyle(document.getElementById('winner-dialog')).backgroundImage.includes('blob:')`), true);
+  await assertPopupLayout();
+  await key('Escape', 'Escape', 27);
+  await waitFor(() => evaluate(`document.getElementById('setup-dialog').open`));
+  await evaluate(`document.getElementById('remove-winner-background').click();document.getElementById('setting-winnerTransparent').checked=false;document.getElementById('preview-winner-background').click()`);
+  assert.equal(await evaluate(`!getComputedStyle(document.getElementById('winner-dialog')).backgroundImage.includes('blob:') && getComputedStyle(document.getElementById('winner-dialog')).borderTopWidth==='1px'`), true);
+  await key(' ', 'Space', 32);
+  await waitFor(() => evaluate(`document.getElementById('setup-dialog').open`));
+  await evaluate(`document.getElementById('settings-form').requestSubmit()`);
+  await waitFor(() => evaluate(`!document.getElementById('save-settings').disabled && state.batch.settings.winnerBackground===''`));
+  await evaluate(`document.querySelector('#setup-dialog .close').click();document.activeElement.blur()`);
+  console.log('PASS: Winner artwork preview/save/reload/removal; no action buttons; preview keyboard cannot change awards');
+
   await evaluate(`(async () => {
     document.getElementById('show-setup').click();
     const canvas=document.createElement('canvas');canvas.width=2;canvas.height=2;
@@ -320,10 +498,10 @@ try {
     const lens = document.querySelector('.center-frame'), style = getComputedStyle(lens);
     const box = lens.getBoundingClientRect(), shell = document.querySelector('.reel-shell').getBoundingClientRect();
     return style.backdropFilter === 'none' && style.pointerEvents === 'none' &&
-      Math.abs(box.left - shell.left - 1) < 1 && Math.abs(shell.right - box.right - 1) < 1 &&
+      Math.abs(box.left - shell.left - 21) < 1 && Math.abs(shell.right - box.right - 21) < 1 &&
       getComputedStyle(document.querySelector('.email-card')).backdropFilter === 'none';
   })()`), true);
-  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.email-card .mail')).color`), 'rgb(248, 247, 243)');
+  assert.equal(await evaluate(`getComputedStyle(document.querySelector('.email-card .mail')).color`), 'rgb(171, 18, 52)');
   assert.equal(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), true);
   assert.equal(await evaluate(`['.reel-shell', '.email-card', '.center-frame', '.reel-shade'].every(selector => {const style = getComputedStyle(document.querySelector(selector)); return style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.backgroundImage === 'none';})`), true);
   assert.equal(await evaluate(`(() => {const frame=getComputedStyle(document.querySelector('.center-frame'));return frame.borderTopWidth==='0px' && frame.borderBottomWidth==='0px' && !document.querySelector('.notch');})()`), true);
@@ -366,7 +544,7 @@ try {
   assert.equal(await evaluate(`document.getElementById('winner-sound').paused && document.getElementById('winner-sound').currentTime === 0`), true);
   console.log('PASS: SPACE spin, bounded reel, winner popup, V absent and close');
   await evaluate(`(() => {const button=document.getElementById('spin'),box=button.getBoundingClientRect();document.body.classList.add('transparent-spin');button.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1,clientX:box.left+40,clientY:box.top+20}));})()`);
-  assert.equal(await evaluate(`document.querySelectorAll('#spin .button-ripple').length===3 && Math.abs(parseFloat(document.querySelector('.button-ripple').style.left)-39)<1 && getComputedStyle(document.getElementById('spin')).backgroundColor==='rgba(0, 0, 0, 0)'`), true);
+  assert.equal(await evaluate(`document.querySelectorAll('#spin .button-ripple').length===3 && Math.abs(parseFloat(document.querySelector('.button-ripple').style.left)-40)<1 && getComputedStyle(document.getElementById('spin')).backgroundColor==='rgba(0, 0, 0, 0)'`), true);
   assert.equal(await evaluate(`document.querySelectorAll('.button-note').length`), 18);
   await evaluate(`document.activeElement.blur()`);
   await waitFor(() => evaluate(`document.getElementById('winner-dialog').open`));
@@ -433,6 +611,7 @@ try {
     const probe = document.createElement('span'); probe.style.backgroundColor = accent;
     document.body.append(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove();
     return !document.getElementById('winner-dialog').open && document.getElementById('spin').disabled &&
+      getComputedStyle(frame).left === '20px' && getComputedStyle(frame).right === '20px' &&
       animation.effect.getTiming().iterations === 3 && animation.effect.getKeyframes()[1].backgroundColor === color &&
       ['borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius'].every(key => getComputedStyle(frame)[key] === '30px');
   })()`), true);

@@ -3,7 +3,7 @@ window.GalaStorage = (() => {
   const defaults = {title: 'ĐÊM CỦA NHỮNG NGÔI SAO', subtitle: 'GALA DINNER · LUCKY DRAW', prize: 'PHẦN QUÀ MAY MẮN', accent: '#ff823f', backgroundColor: '#101114', background: '', duration: 7};
   const random = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => b.toString(16).padStart(2, '0')).join('');
   const layoutDefaults = {waitingBackground: '', manualLayout: false, fitBackground: false, reelY: 50, reelWidth: 90, reelHeight: 360, reelRadius: 20, reelFont: 42, buttonY: 85, buttonWidth: 310, buttonHeight: 58, buttonRadius: 10, buttonTransparent: false, buttonText: 'QUAY MAY MẮN'};
-  Object.assign(defaults, layoutDefaults);
+  Object.assign(defaults, layoutDefaults, {buttonBackground: '', reelBackground: '', winnerBackground: '', winnerWidth: 780, winnerHeight: 400, winnerContentY: 50, winnerTransparent: false, winnerTextColor: '#ffffff', reelTextColor: '#ffffff', reelBorder: true});
   function randomIndex(length) {
     const bound = Math.floor(4294967296 / length) * length, value = new Uint32Array(1);
     do {crypto.getRandomValues(value);} while (value[0] >= bound);
@@ -73,7 +73,7 @@ window.GalaStorage = (() => {
       } else if (event.type === 'absent' && wins.has(event.id)) wins.get(event.id).absent = true;
       else throw new Error('Loại bản ghi log không hợp lệ.');
     }
-    config.settings = {...defaults, ...config.settings};
+    config.settings = {...defaults, ...config.settings, reelTextColor: config.settings?.reelTextColor ?? config.settings?.winnerTextColor ?? defaults.reelTextColor};
     config.settings.reelFont = Math.max(26, config.settings.reelFont);
     delete config.settings.reelX; delete config.settings.buttonX; delete config.settings.nameFont;
     const data = {config, people, wins, requests, byPerson, pool: people.filter(p => !byPerson.has(p.id)).map(p => p.id)};
@@ -190,9 +190,23 @@ window.GalaStorage = (() => {
         settings.duration = Math.max(3, Math.min(20, Number(input.duration) || 7));
         settings.background = input.background || '';
         settings.waitingBackground = input.waitingBackground ?? data.config.settings.waitingBackground ?? '';
+        settings.buttonBackground = input.buttonBackground ?? data.config.settings.buttonBackground ?? '';
+        settings.reelBackground = input.reelBackground ?? data.config.settings.reelBackground ?? '';
+        settings.winnerBackground = input.winnerBackground ?? data.config.settings.winnerBackground ?? '';
         settings.manualLayout = input.manualLayout === true;
         settings.fitBackground = input.fitBackground === true;
         settings.buttonTransparent = input.buttonTransparent === true;
+        settings.reelBorder = (input.reelBorder ?? data.config.settings.reelBorder ?? defaults.reelBorder) === true;
+        settings.winnerTransparent = input.winnerTransparent ?? data.config.settings.winnerTransparent ?? false;
+        settings.winnerTransparent = settings.winnerTransparent === true;
+        settings.winnerTextColor = input.winnerTextColor ?? data.config.settings.winnerTextColor ?? defaults.winnerTextColor;
+        if (!/^#[a-f0-9]{6}$/i.test(settings.winnerTextColor)) throw new Error('Màu chữ popup không hợp lệ.');
+        settings.reelTextColor = input.reelTextColor ?? data.config.settings.reelTextColor ?? defaults.reelTextColor;
+        if (!/^#[a-f0-9]{6}$/i.test(settings.reelTextColor)) throw new Error('Màu chữ ô quay số không hợp lệ.');
+        for (const [key, min, max] of [['winnerWidth', 280, 3840], ['winnerHeight', 200, 2160], ['winnerContentY', 0, 100]]) {
+          const value = Number(input[key] ?? data.config.settings[key] ?? defaults[key]);
+          settings[key] = Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : defaults[key];
+        }
         for (const [key, min, max] of [['reelY', 0, 100], ['reelWidth', 20, 100], ['reelHeight', 120, 1000], ['reelRadius', 0, 200], ['reelFont', 26, 100], ['buttonY', 0, 100], ['buttonWidth', 80, 1600], ['buttonHeight', 30, 300], ['buttonRadius', 0, 150]]) {
           const value = Number(input[key] ?? defaults[key]);
           settings[key] = Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : defaults[key];
@@ -200,6 +214,9 @@ window.GalaStorage = (() => {
         settings.buttonText = String(input.buttonText ?? defaults.buttonText).trim().slice(0, 100);
         if (settings.background) await background(settings.background);
         if (settings.waitingBackground) await background(settings.waitingBackground);
+        if (settings.buttonBackground) await background(settings.buttonBackground);
+        if (settings.reelBackground) await background(settings.reelBackground);
+        if (settings.winnerBackground) await background(settings.winnerBackground);
         const config = {...data.config, settings};
         await write(`src/setting/${id}.json`, JSON.stringify(config)); data.config = config;
         return summary(data);

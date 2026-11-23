@@ -3,6 +3,33 @@ const $ = id => document.getElementById(id);
 const state = {batches: [], selectedId: null, selectionError: null, batch: null, sample: [], winners: [], busy: false, loading: false, winner: null, page: 1, pages: 1, background: '', request: null};
 const format = n => Number(n).toLocaleString('vi-VN');
 let toastTimer, searchTimer, peopleController, stageVersion = 0, confettiFrame;
+const settingsImages = [
+  ['background', 'background', 'drawImage'],
+  ['waiting-background', 'waitingBackground', 'waitingImage'],
+  ['winner-background', 'winnerBackground', 'winnerImage'],
+  ['reel-background', 'reelBackground', 'reelImage'],
+  ['button-background', 'buttonBackground', 'buttonImage']
+];
+const thumbnailURLs = new Map();
+function refreshSettingsImages() {
+  for (const [id, setting, image] of settingsImages) {
+    if (thumbnailURLs.has(id)) URL.revokeObjectURL(thumbnailURLs.get(id));
+    thumbnailURLs.delete(id);
+    const file = $(id + '-file').files[0];
+    let source = state[setting] ? state[image] : '';
+    if (file) {
+      source = '';
+      if (file.size <= 10_000_000 && ['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+        source = URL.createObjectURL(file);
+        thumbnailURLs.set(id, source);
+      }
+    }
+    const thumbnail = $(id + '-thumbnail');
+    thumbnail.hidden = !source;
+    if (source) thumbnail.src = source;
+    else thumbnail.removeAttribute('src');
+  }
+}
 
 function toast(message) {
   $('toast').textContent = message;
@@ -68,9 +95,22 @@ function populateSelectors() {
   }
 }
 
-const layoutKeys = ['manualLayout', 'fitBackground', 'reelY', 'reelWidth', 'reelHeight', 'reelRadius', 'reelFont', 'buttonY', 'buttonWidth', 'buttonHeight', 'buttonRadius', 'buttonText', 'buttonTransparent'];
+const layoutKeys = ['reelBorder', 'manualLayout', 'fitBackground', 'reelY', 'reelWidth', 'reelHeight', 'reelRadius', 'reelFont', 'buttonY', 'buttonWidth', 'buttonHeight', 'buttonRadius', 'buttonText', 'buttonTransparent'];
+const winnerLayoutKeys = ['winnerWidth', 'winnerHeight', 'winnerContentY', 'winnerTransparent', 'winnerTextColor'];
+function readWinnerLayout() {
+  return Object.fromEntries(winnerLayoutKeys.map(key => [key, key === 'winnerTransparent' ? $('setting-' + key).checked : key === 'winnerTextColor' ? $('setting-' + key).value : Number($('setting-' + key).value)]));
+}
+function applyWinnerLayout(settings) {
+  const popup = $('winner-dialog');
+  for (const key of ['winnerWidth', 'winnerHeight', 'winnerContentY']) {
+    popup.style.setProperty('--' + key, `${settings[key] ?? GalaStorage.defaults[key]}${key.endsWith('Y') ? '%' : 'px'}`);
+  }
+  popup.classList.toggle('transparent-background', settings.winnerTransparent === true);
+  popup.style.setProperty('--winnerTextColor', settings.winnerTextColor ?? GalaStorage.defaults.winnerTextColor);
+
+}
 function readLayout() {
-  return Object.fromEntries(layoutKeys.map(key => [key, ['manualLayout', 'buttonTransparent', 'fitBackground'].includes(key) ? $('setting-' + key).checked : key === 'buttonText' ? $('setting-' + key).value : Number($('setting-' + key).value)]));
+  return Object.fromEntries(layoutKeys.map(key => [key, ['reelBorder', 'manualLayout', 'buttonTransparent', 'fitBackground'].includes(key) ? $('setting-' + key).checked : key === 'buttonText' ? $('setting-' + key).value : Number($('setting-' + key).value)]));
 }
 
 let stageDesignHeight = 1080;
@@ -94,8 +134,9 @@ function applyLayout(settings) {
   document.body.classList.toggle('manual-layout', settings.manualLayout === true || settings.fitBackground === true);
   document.body.classList.toggle('fit-background', settings.fitBackground === true);
   document.body.classList.toggle('transparent-spin', settings.buttonTransparent === true);
+  document.querySelector('.reel-shell').classList.toggle('show-border', settings.reelBorder === true);
   $('spin').textContent = String(settings.buttonText ?? GalaStorage.defaults.buttonText).trim();
-  for (const key of layoutKeys.filter(key => !['manualLayout', 'buttonText', 'buttonTransparent', 'fitBackground'].includes(key))) {
+  for (const key of layoutKeys.filter(key => !['reelBorder', 'manualLayout', 'buttonText', 'buttonTransparent', 'fitBackground'].includes(key))) {
     const value = Number(settings[key] ?? GalaStorage.defaults[key]);
     document.documentElement.style.setProperty('--' + key, `${settings.fitBackground && key.endsWith('Y') ? value * stageDesignHeight / 100 : settings.fitBackground && key === 'reelWidth' ? value * 19.2 : value}${settings.fitBackground ? 'px' : key.endsWith('Y') ? 'vh' : key === 'reelWidth' ? 'vw' : 'px'}`);
   }
@@ -122,9 +163,27 @@ async function applySettings() {
   const settings = state.batch.settings;
   document.documentElement.style.setProperty('--accent', settings.accent);
   document.documentElement.style.setProperty('--bg', settings.backgroundColor);
-  const [drawImage, waitingImage] = await Promise.all([
-    GalaStorage.background(settings.background), GalaStorage.background(settings.waitingBackground)
+  const [drawImage, waitingImage, buttonImage, reelImage, winnerImage] = await Promise.all([
+    GalaStorage.background(settings.background), GalaStorage.background(settings.waitingBackground),
+    GalaStorage.background(settings.buttonBackground), GalaStorage.background(settings.reelBackground),
+    GalaStorage.background(settings.winnerBackground)
   ]);
+  state.winnerImage = winnerImage;
+  applyWinnerBackground(winnerImage);
+  applyWinnerLayout(settings);
+  $('setting-reelTextColor').value = settings.reelTextColor;
+  document.documentElement.style.setProperty('--drawTextColor', settings.reelTextColor);
+  for (const key of winnerLayoutKeys) {
+    if (key === 'winnerTransparent') $('setting-' + key).checked = settings[key] === true;
+    else $('setting-' + key).value = settings[key] ?? GalaStorage.defaults[key];
+  }
+  clearButtonPreview();
+  clearReelPreview();
+  state.reelImage = reelImage;
+  document.querySelector('.reel-shell').style.backgroundImage = reelImage ? `url("${reelImage}")` : '';
+  document.querySelector('.reel-shell').classList.toggle('has-background-image', Boolean(reelImage));
+  state.buttonImage = buttonImage;
+  $('spin').style.backgroundImage = buttonImage ? `url("${buttonImage}")` : '';
   state.drawImage = drawImage;
   state.waitingImage = waitingImage;
   updateStageBackground();
@@ -142,14 +201,21 @@ async function applySettings() {
   $('setting-bgcolor').value = settings.backgroundColor;
   $('setting-duration').value = settings.duration;
   for (const key of layoutKeys) {
-    if (['manualLayout', 'buttonTransparent', 'fitBackground'].includes(key)) $('setting-' + key).checked = settings[key];
+    if (['reelBorder', 'manualLayout', 'buttonTransparent', 'fitBackground'].includes(key)) $('setting-' + key).checked = settings[key];
     else $('setting-' + key).value = settings[key];
   }
   applyLayout(settings);
   state.background = settings.background;
   state.waitingBackground = settings.waitingBackground;
+  state.buttonBackground = settings.buttonBackground;
+  state.reelBackground = settings.reelBackground;
+  state.winnerBackground = settings.winnerBackground;
+  $('winner-background-file').value = '';
   $('background-file').value = '';
   $('waiting-background-file').value = '';
+  $('button-background-file').value = '';
+  $('reel-background-file').value = '';
+  refreshSettingsImages();
   $('export-all').href = '#';
   $('export-winners').href = '#';
   const report = state.batch.importReport;
@@ -432,6 +498,11 @@ async function spin(event) {
   }
 }
 
+function applyWinnerBackground(image) {
+  $('winner-dialog').style.backgroundImage = image ? `url("${image}")` : '';
+  $('winner-dialog').classList.toggle('has-background-image', Boolean(image));
+}
+
 function showWinner(winner) {
   state.winner = winner;
   $('winner-name').textContent = winner.person.name || 'NGÔI SAO MAY MẮN';
@@ -445,15 +516,23 @@ function showWinner(winner) {
   } catch {
     // Missing files or blocked audio must not interrupt winner confirmation.
   }
-  $('confirm-winner').focus();
+  $('winner-dialog').focus();
   confetti();
 }
 
 async function closeWinner(absent = false) {
   if (!$('winner-dialog').open || state.busy) return;
+  if (state.winnerPreview) {
+    $('winner-dialog').close();
+    state.winnerPreview = false;
+    if (state.winnerPreviewURL) URL.revokeObjectURL(state.winnerPreviewURL);
+    state.winnerPreviewURL = '';
+    applyWinnerBackground(state.winnerImage);
+    applyWinnerLayout(state.batch.settings);
+    $('setup-dialog').showModal();
+    return;
+  }
   state.busy = true;
-  $('absent-winner').disabled = true;
-  $('confirm-winner').disabled = true;
   try {
     if (absent) {
       await api(`/api/batches/${state.batch.id}/absent`, {winId: state.winner.id});
@@ -473,8 +552,6 @@ async function closeWinner(absent = false) {
   } catch (error) {toast(error.message);}
   finally {
     state.busy = false;
-    $('absent-winner').disabled = false;
-    $('confirm-winner').disabled = false;
     controls();
   }
 }
@@ -670,10 +747,16 @@ $('settings-form').addEventListener('submit', async event => {
     if (file) state.background = (await api('/api/background', {file})).url;
     const waitingFile = $('waiting-background-file').files[0];
     if (waitingFile) state.waitingBackground = (await api('/api/background', {file: waitingFile})).url;
+    const buttonFile = $('button-background-file').files[0];
+    if (buttonFile) state.buttonBackground = (await api('/api/background', {file: buttonFile})).url;
+    const reelFile = $('reel-background-file').files[0];
+    if (reelFile) state.reelBackground = (await api('/api/background', {file: reelFile})).url;
+    const winnerFile = $('winner-background-file').files[0];
+    if (winnerFile) state.winnerBackground = (await api('/api/background', {file: winnerFile})).url;
     state.batch = await api(`/api/batches/${state.batch.id}/settings`, {
       title: $('setting-title').value, subtitle: $('setting-subtitle').value, prize: $('setting-prize').value,
       accent: $('setting-accent').value, backgroundColor: $('setting-bgcolor').value,
-      duration: Number($('setting-duration').value), background: state.background, waitingBackground: state.waitingBackground, ...readLayout()});
+      duration: Number($('setting-duration').value), background: state.background, waitingBackground: state.waitingBackground, buttonBackground: state.buttonBackground, reelBackground: state.reelBackground, winnerBackground: state.winnerBackground, ...readLayout(), ...readWinnerLayout(), reelTextColor: $('setting-reelTextColor').value});
     await applySettings(); toast('Đã lưu thiết lập riêng cho đợt này.');
   } catch (error) {toast(error.message);}
   finally {state.loading = false; controls(); $('save-settings').disabled = false;}
@@ -681,9 +764,75 @@ $('settings-form').addEventListener('submit', async event => {
 
 $('remove-background').addEventListener('click', () => {state.background = ''; $('background-file').value = ''; toast('Sẽ bỏ ảnh nền khi nhấn Lưu thiết lập.');});
 $('remove-waiting-background').addEventListener('click', () => {state.waitingBackground = ''; $('waiting-background-file').value = ''; toast('Sẽ bỏ ảnh màn chờ khi nhấn Lưu thiết lập.');});
+$('remove-winner-background').addEventListener('click', () => {
+  state.winnerBackground = '';
+  $('winner-background-file').value = '';
+  toast('Sẽ bỏ ảnh nền popup khi nhấn Lưu thiết lập.');
+});
+$('preview-winner-background').addEventListener('click', () => {
+  if (!state.batch || state.busy || state.loading) return;
+  if (!winnerLayoutKeys.every(key => $('setting-' + key).reportValidity())) return;
+  applyWinnerLayout(readWinnerLayout());
+  const file = $('winner-background-file').files[0];
+  if (file && (file.size > 10_000_000 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) {
+    toast('Chọn ảnh PNG, JPG, WebP tối đa 10 MB.'); return;
+  }
+  state.winnerPreviewURL = file ? URL.createObjectURL(file) : '';
+  applyWinnerBackground(state.winnerPreviewURL || (state.winnerBackground ? state.winnerImage : ''));
+  $('winner-name').textContent = 'NGƯỜI TRÚNG GIẢI MẪU';
+  $('winner-email').textContent = 'nhansu@example.com';
+  $('winner-department').textContent = 'XEM THỬ · KHÔNG LƯU KẾT QUẢ';
+  state.winnerPreview = true;
+  $('setup-dialog').close();
+  $('winner-dialog').showModal();
+  $('winner-dialog').focus();
+});
+function clearButtonPreview() {
+  if (state.buttonPreviewURL) URL.revokeObjectURL(state.buttonPreviewURL);
+  state.buttonPreviewURL = '';
+}
+$('button-background-file').addEventListener('change', clearButtonPreview);
+function clearReelPreview() {
+  if (state.reelPreviewURL) URL.revokeObjectURL(state.reelPreviewURL);
+  state.reelPreviewURL = '';
+}
+$('reel-background-file').addEventListener('change', clearReelPreview);
+$('remove-reel-background').addEventListener('click', () => {
+  clearReelPreview();
+  state.reelBackground = '';
+  $('reel-background-file').value = '';
+  toast('Sẽ bỏ ảnh nền ô quay số khi nhấn Lưu thiết lập.');
+});
+$('remove-button-background').addEventListener('click', () => {
+  clearButtonPreview();
+  state.buttonBackground = '';
+  $('button-background-file').value = '';
+  toast('Sẽ bỏ ảnh nền nút quay số khi nhấn Lưu thiết lập.');
+});
 $('preview-layout').addEventListener('click', () => {
   if (!$('settings-form').reportValidity()) return;
+  const reelFile = $('reel-background-file').files[0];
+  if (reelFile && (reelFile.size > 10_000_000 || !['image/png', 'image/jpeg', 'image/webp'].includes(reelFile.type))) {
+    toast('Chọn ảnh PNG, JPG, WebP tối đa 10 MB.'); return;
+  }
+  clearButtonPreview();
+  const buttonFile = $('button-background-file').files[0];
+  if (buttonFile) {
+    if (buttonFile.size > 10_000_000 || !['image/png', 'image/jpeg', 'image/webp'].includes(buttonFile.type)) {
+      toast('Chọn ảnh PNG, JPG, WebP tối đa 10 MB.'); return;
+    }
+    state.buttonPreviewURL = URL.createObjectURL(buttonFile);
+  }
+  const buttonImage = state.buttonPreviewURL || (state.buttonBackground ? state.buttonImage : '');
+  $('spin').style.backgroundImage = buttonImage ? `url("${buttonImage}")` : '';
+  clearReelPreview();
+  if (reelFile) state.reelPreviewURL = URL.createObjectURL(reelFile);
+  const reelImage = state.reelPreviewURL || (state.reelBackground ? state.reelImage : '');
+  document.querySelector('.reel-shell').style.backgroundImage = reelImage ? `url("${reelImage}")` : '';
+  document.querySelector('.reel-shell').classList.toggle('has-background-image', Boolean(reelImage));
   applyLayout(readLayout());
+  document.documentElement.style.setProperty('--drawTextColor', $('setting-reelTextColor').value);
+  applyWinnerLayout(readWinnerLayout());
   document.body.classList.remove('stage-waiting');
   updateStageBackground();
   $('stage').inert = false;
@@ -692,17 +841,30 @@ $('preview-layout').addEventListener('click', () => {
   $('setup-dialog').close();
 });
 $('reset-layout').addEventListener('click', () => {
+  clearReelPreview();
+  state.reelBackground = '';
+  $('reel-background-file').value = '';
+  clearButtonPreview();
+  state.buttonBackground = '';
+  $('button-background-file').value = '';
   for (const key of layoutKeys) {
-    if (['manualLayout', 'buttonTransparent', 'fitBackground'].includes(key)) $('setting-' + key).checked = false;
+    if (['reelBorder', 'manualLayout', 'buttonTransparent', 'fitBackground'].includes(key)) $('setting-' + key).checked = GalaStorage.defaults[key];
     else $('setting-' + key).value = GalaStorage.defaults[key];
   }
 });
 $('setup-batch').addEventListener('change', event => selectBatch(event.target.value));
+for (const [id] of settingsImages) {
+  $(id + '-file').addEventListener('change', refreshSettingsImages);
+  $('remove-' + id).addEventListener('click', refreshSettingsImages);
+}
+$('reset-layout').addEventListener('click', refreshSettingsImages);
+$('settings-form').addEventListener('invalid', event => {
+  const group = event.target.closest('details');
+  if (group) group.open = true;
+}, true);
 $('spin').addEventListener('click', spin);
 $('show-setup').addEventListener('click', openSetup);
 $('show-winners').addEventListener('click', openWinners);
-$('confirm-winner').addEventListener('click', () => closeWinner());
-$('absent-winner').addEventListener('click', () => closeWinner(true));
 document.querySelectorAll('.close').forEach(button => button.addEventListener('click', () => {if (!state.loading) button.closest('dialog').close();}));
 $('winner-dialog').addEventListener('cancel', event => {event.preventDefault(); closeWinner();});
 $('setup-dialog').addEventListener('cancel', event => {if (state.loading) event.preventDefault();});
@@ -716,12 +878,15 @@ async function fullscreen() {
   catch {toast('Trình duyệt không hỗ trợ toàn màn hình. Có thể dùng F11.');}
 }
 $('fullscreen').addEventListener('click', fullscreen);
+$('waiting-fullscreen').addEventListener('click', fullscreen);
 document.addEventListener('fullscreenchange', () => {
   const active = !!document.fullscreenElement;
-  $('fullscreen').setAttribute('aria-pressed', String(active));
-  $('fullscreen').setAttribute('aria-label', active ? 'Thoát toàn màn hình' : 'Toàn màn hình');
-  $('fullscreen').title = active ? 'Thoát toàn màn hình (F)' : 'Toàn màn hình (F)';
-  $('fullscreen').textContent = active ? '⊡' : '⛶';
+  for (const id of ['fullscreen', 'waiting-fullscreen']) {
+    $(id).setAttribute('aria-pressed', String(active));
+    $(id).setAttribute('aria-label', active ? 'Thoát toàn màn hình' : 'Toàn màn hình');
+    $(id).title = active ? 'Thoát toàn màn hình (F)' : 'Toàn màn hình (F)';
+    $(id).textContent = active ? '⊡' : '⛶';
+  }
 });
 document.addEventListener('keydown', event => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || event.target.isContentEditable) return;
